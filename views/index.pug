@@ -1,0 +1,70 @@
+extends layout
+
+block content
+  h1= title
+  p Welcome to #{title}
+  p
+    a(href="/web3") Web3 login page
+  button(id="login") MetaMask Login
+  br
+  span#ethAddress
+
+block scripts
+  script.
+    if (!window.ethereum){ console.log("error")}
+    var loginBtn = document.getElementById('login')
+    var ethAddress = document.getElementById('ethAddress')
+
+    async function logout() {
+        let resLogout = await axios.post('/logout',{},{headers: {authorization: "Bearer " + localStorage.refreshToken}})
+        localStorage.clear()
+        loginBtn.innerText = 'MetaMask Login'
+        ethAddress.innerText = ''
+    }
+
+    async function loginWithMetaMask(dispatch) {
+      if (localStorage.refreshToken) {
+        return await logout();
+      }
+      function toHex(s) {
+        var hex = '';
+        for (var i = 0; i < s.length; i++) {
+          hex += ''+s.charCodeAt(i).toString(16);
+        }
+        return `0x${hex}`;
+      }
+
+      const accounts = await window.ethereum.request({method: 'eth_requestAccounts'}).catch((e) => {
+        console.error(e.message);
+        return
+      })
+      if (!accounts) {
+        return
+      }
+
+      let resLogin = await axios.post('/login',{owner: accounts[0]})
+
+      var secretPhrase = toHex(resLogin.data.result.message);
+
+      let signature = await window.ethereum.request({id: 1, method: 'personal_sign', params: [accounts[0], secretPhrase]},
+              function (err, result) {
+                let sig = result.result;
+                dispatch(exchange.authenticate(sig, user))
+              })
+
+      console.log(signature, signature.length)
+
+      let resAuth = await axios.post('/auth',{sig: signature, owner: accounts[0]})
+
+      if (resAuth.data.success) {
+        ethAddress.innerText = accounts[0]
+        localStorage.setItem('accessToken', resAuth.data.result.accessToken)
+        localStorage.setItem('refreshToken', resAuth.data.result.refreshToken)
+
+        loginBtn.innerText = 'Log Out'
+      }
+    }
+
+    loginBtn.addEventListener('click', loginWithMetaMask);
+
+
